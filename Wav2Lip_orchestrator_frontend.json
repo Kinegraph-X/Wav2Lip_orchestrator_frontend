@@ -1,0 +1,10 @@
+{
+	"content" : [
+		"../_formantCoreBundler-master/build",
+		"jsComponentLib"
+	],
+	"ressourcePath" : [
+	
+	],
+	"liveReloadspecificPort" : 357730
+}
