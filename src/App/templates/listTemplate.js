@@ -1,7 +1,8 @@
 const {App, TemplateFactory} = require('formantjs')
-const {status} = require('../constants/constants')
+const {statuses} = require('../constants/constants')
 
 const listHostTemplate = TemplateFactory.createHostDef({
+    type : 'ComponentWithView',
 	nodeName : 'ul',
     attributes : [
         {className : 'list_host'}

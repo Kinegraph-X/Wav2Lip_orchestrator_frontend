@@ -33,7 +33,7 @@ function get_column_template(title) {
                     type : 'CompoundComponent',
                     nodeName : 'div',
                     attributes : [
-                        {className : 'row column_content'}
+                        {className : title === 'Logs' ? 'row column_content logs' : 'row column_content'}
                     ]
                 })
             })

@@ -1,117 +1,170 @@
 * {
-    box-sizing : border-box;
+	box-sizing : border-box;
+}
+
+:host {
+	display : flex;
+	align-items : center;
+	max-width : 1801px;
+}
+:host > section {
+	min-width : 98%;
+	min-height : 152px;
 }
 
 h1, h2, h3, h4, h5, h6 {
-    margin : 0px;
-  }
+	margin : 0px;
+}
+
+header {
+	height : 20px;
+}
   
   .row {
-    display : flex;
-    justify-content : space-evenly;
+	display : flex;
+	justify-content : space-around;
+	gap : 17px;
   }
+
+.row.logs section {
+	flex : 1 1 0;
+}
   
   .margin_top {
-    margin-top: 38px;
+	margin-top: 24px;
   }
   
   button {
-    display : block;
-    justify-content : center; /*hack cause we don't run scoped CSS, so the framework shall display flex at some point*/
-    background-repeat : no-repeat;
-    color : #000;
-    font-size : 15px;
-    width : 101px;
-    margin : 7px;
-    padding : 5px 0px;
-    border : none;
-    border-radius : 7px;
-    cursor : pointer;
+	display : block;
+	justify-content : end; /*hack cause we don't run scoped CSS, so the framework shall display flex at some point*/
+	text-align : right;
+	background-repeat : no-repeat;
+	color : #000;
+	font-size : 15px;
+	width : 74px;
+	margin : 4px;
+	padding : 5px 0px;
+	border : none;
+	border-radius : 7px;
+	cursor : pointer;
   }
   
   .run_button {
-    position : absolute;
-    top : 7px;
-    left : 7px;
-    background-color : #00904400;
-    filter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(100%) contrast(102%);
-    background-image: url(img/play-circle-outline.svg);
+	position : absolute;
+	top : 7px;
+	left : 7px;
+	background-color : #00904400;
+	filter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(100%) contrast(102%);
+	background-image: url(img/play-circle-outline.svg);
   }
   
   .stop_button {
-    position : absolute;
-    top : 7px;
-    left : 7px;
-    background-color : #BD222200;
-    filter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(89%) contrast(89%);
-    background-image: url(img/stop-circle-outline.svg);
+	position : absolute;
+	top : 7px;
+	left : 7px;
+	background-color : #BD222200;
+	filter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(89%) contrast(89%);
+	background-image: url(img/stop-circle-outline.svg);
   }
   
   .status_button {
-    position : absolute;
-    bottom : 7px;
-    right : 7px;
-    background-color : #5550;
-    filter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(95%) contrast(84%);
-    background-image: url(img/cube-outline.svg);
-    background-position : right center;
+	position : absolute;
+	bottom : 7px;
+	right : 7px;
+	background-color : #5550;
+	filter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(95%) contrast(84%);
+	background-image: url(img/cube-outline.svg);
+	background-position : right center;
+	text-align : left;
   }
   
   .restart_button {
-    position : absolute;
-    bottom : 7px;
-    left : 7px;
-    background-color : #22779900;
-    filter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(91%) contrast(90%);
-    background-image: url(img/refresh-outline.svg);
+	position : absolute;
+	bottom : 7px;
+	left : 7px;
+	background-color : #22779900;
+	filter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(91%) contrast(90%);
+	background-image: url(img/refresh-outline.svg);
   }
 
   .run_button:hover {
-    filter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(200%) contrast(102%);
+	filter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(200%) contrast(102%);
   }
   
   .stop_button:hover {
-    filter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(180%) contrast(89%);
+	filter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(180%) contrast(89%);
   }
   
   .status_button:hover {
-    filter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);
+	filter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);
   }
   
   .restart_button:hover {
-    filter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(180%) contrast(90%);
+	filter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(180%) contrast(90%);
   }
 
   .column_content {
-    margin-top : 15px;
+	margin-top : 5px;
+}
+
+.column_content.scrollable ul {
+	height : 380px;
+	scrollbar-width: thin;
+	overflow-y : scroll;
+}
+
+.column_content.scrollable ul::-webkit-scrollbar-thumb {
+	border-radius : 4px;
+}
+
+.column_header {
+	line-height : 18px;
 }
 
 .column_content div {
   position : relative;
   background-color: #22242B;
-  min-width : 224px;
+  min-width : 189px;
+  max-width : 634px;
   padding : 7px;
   border : 2px solid #1A1824;
   border-width : 2px 1px 1px 1px;
   border-color : #997755 #1A1824 #1A1824 #443311;
-  border-radius : 12px;
+  border-radius : 7px;
 }
 
  .column_content h4 {
-    text-align : center;
-    margin : 77px 21px 77px 21px;
+	text-align : center;
+	margin : 57px 21px 57px 21px;
   }
 
   ul {
-    font-family : consolas;
-    padding : 0px;
+	font-family : consolas;
+	padding : 0px;
+	margin : 5px 0px;
   }
 
   li {
-    list-style-type : none;
-    font-size: 11px;
+	list-style-type : none;
+	font-size: 11px;
   }
 
   .success {
-    color : #228855;
+	color : #228855;
+  }
+
+  .backspace {
+	display : inline-block;
+	position : relative;
+	top : -4px;
+	background-color  : #0000;
+	background-image: url(img/backspace-outline.svg);
+	background-repeat : no-repeat;
+	color : #EFEFEF;
+	filter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);
+	width : 19px;
+	height : 19px;
+	margin : 7px;
+	padding : 0px 0px;
+	cursor : pointer;
   }

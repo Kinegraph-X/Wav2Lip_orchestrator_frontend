@@ -15,4 +15,4 @@ const {appConstants, App} = require('formantjs');
 	App.componentTypes.CompositorComponent.createAppLevelExtendedComponent();
 }).call(window);
 
-module.exports = require('src/App/launcher/app')
+module.exports = require('src/App/launcher/app');

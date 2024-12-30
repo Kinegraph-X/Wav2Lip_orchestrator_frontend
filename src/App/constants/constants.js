@@ -4,17 +4,22 @@ const constants = {
         run : '/start_worker',
         stop : '/stop_worker',
         status : '/status_worker',
-        restart : '/restart_worker',
+        restart : null,
     },
     workers : {
         server : 'server',
         playback : 'playback',
         client : 'client',
     },
-    status : {
-        running : 'Running',
-        stopped : 'Stopped',
-        error : 'Error'
+    statuses : {
+        running : 'running',
+        stopped : 'stopped',
+        error : 'error'
+    },
+    successTriggers : {
+        server : ['INFO : Using cpu for inference.', 'INFO : SSH Client closed'],
+        playback : ['INFO : Server listening on port 9999...', 'INFO : Exit flag reset.'],
+        client : ['INFO : Connected to video playback socket.', 'INFO : Client subprocess terminated.']
     }
 }
 

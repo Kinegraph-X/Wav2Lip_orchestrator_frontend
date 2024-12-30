@@ -10473,6 +10473,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 
 			Object.defineProperty(RecitalDataset.prototype, 'resetLength',  {
 				value : function() {
+					// console.log(this.trackedComponent._children.length)
 					for (var i = this.length - 1; i >= 0; i--) {
 						this.trackedComponent.removeChildAt(this.trackedComponent._children.length - 1);
 					};
@@ -26259,22 +26260,60 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		        run : '/start_worker',
 		        stop : '/stop_worker',
 		        status : '/status_worker',
-		        restart : '/restart_worker',
+		        restart : null,
 		    },
 		    workers : {
 		        server : 'server',
 		        playback : 'playback',
 		        client : 'client',
 		    },
-		    status : {
-		        running : 'Running',
-		        stopped : 'Stopped',
-		        error : 'Error'
+		    statuses : {
+		        running : 'running',
+		        stopped : 'stopped',
+		        error : 'error'
+		    },
+		    successTriggers : {
+		        server : ['INFO : Using cpu for inference.', 'INFO : SSH Client closed'],
+		        playback : ['INFO : Server listening on port 9999...', 'INFO : Exit flag reset.'],
+		        client : ['INFO : Connected to video playback socket.', 'INFO : Client subprocess terminated.']
 		    }
 		};
 
 		constants_1 = constants;
 		return constants_1;
+	}
+
+	var button_template;
+	var hasRequiredButton_template;
+
+	function requireButton_template () {
+		if (hasRequiredButton_template) return button_template;
+		hasRequiredButton_template = 1;
+		const {TemplateFactory} = requireFormant();
+		const {endpoints} = requireConstants();
+
+		function get_button_templates(worker) {
+		    const button_templates = {};
+
+		    Object.keys(endpoints).forEach(function(endpointName) {
+
+		        button_templates[endpointName] = TemplateFactory.createDef({
+		            host : TemplateFactory.createHostDef({
+		                type : 'ClickableComponent',
+		                nodeName : 'button',
+		                attributes : [
+		                    {className : endpointName + '_button'},
+		                    {textContent : endpointName}
+		                ]
+		            })
+		        });
+		    });
+
+		    return button_templates
+		}
+
+		button_template = get_button_templates;
+		return button_template;
 	}
 
 	var api;
@@ -26317,37 +26356,85 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		return api;
 	}
 
-	var button_template;
-	var hasRequiredButton_template;
+	var UIManager_1;
+	var hasRequiredUIManager;
 
-	function requireButton_template () {
-		if (hasRequiredButton_template) return button_template;
-		hasRequiredButton_template = 1;
-		const {TemplateFactory} = requireFormant();
-		const {endpoints} = requireConstants();
+	function requireUIManager () {
+		if (hasRequiredUIManager) return UIManager_1;
+		hasRequiredUIManager = 1;
+		const {statuses, workers} = requireConstants();
 
-		function get_button_templates(worker) {
-		    const button_templates = {};
+		class UIManager {
+		    datasets = {
+		        statuses : {},
+		        workers : {}
+		    }
+		    logDOMElements = {}
+		    buttonRefreshStreams = {}
+		    constructor() {
+		        Object.keys(workers).forEach(function(workerName) {
+		            this.datasets.workers[workerName] = null;
+		        }, this);
+		        Object.keys(statuses).forEach(function(status) {
+		            this.datasets.workers[status] = null;
+		        }, this);
+		    }
 
-		    Object.keys(endpoints).forEach(function(endpointName) {
+		    handleError(intervalID, workerName, originButtonGroup) {
+		        originButtonGroup.streams.statusFeedback.value = statuses.stopped;
+		        this.filterStatuses(this.datasets.statuses, workerName, statuses.error);
+		        clearInterval(intervalID);
+		    }
 
-		        button_templates[endpointName] = TemplateFactory.createDef({
-		            host : TemplateFactory.createHostDef({
-		                type : 'ClickableComponent',
-		                nodeName : 'button',
-		                attributes : [
-		                    {className : endpointName + '_button'},
-		                    {textContent : endpointName}
-		                ]
-		            })
+		    acquireDatasets(type, datasets) {
+		        for (let entry in datasets) {
+		            const dataset = datasets[entry];
+		            this.datasets[type][entry] = dataset;
+		        }
+		    }
+
+		    acquireButtonRefreshStreams(worker, stream) {
+		        this.buttonRefreshStreams[worker] = stream;
+		    }
+
+		    acquireLogElement(worker, element) {
+		        this.logDOMElements[worker] = element;
+		    }
+		    
+		    updateScroll(worker){
+		        this.logDOMElements[worker].scrollTop = this.logDOMElements[worker].scrollHeight;
+		    }
+
+		    updateButtonState(worker, status) {
+		        this.buttonRefreshStreams[worker].value = status;
+		    }
+
+		    filterStatuses(from, newStatus) {
+		        const self = this;
+		        Object.keys(this.datasets.statuses).forEach(function(status) {
+		            const dataset = self.datasets.statuses[status];
+		            const oldValues = dataset.slice();
+		            
+		            const workerExists = oldValues.findObjectByValue('text', from);
+		    
+		            if (workerExists && status === newStatus) {
+		                // return
+		            }
+		            else if (workerExists && status !== newStatus) {
+		                let newValues = oldValues.filter((val) => val.text !== from);
+		                dataset.resetLength();
+		                newValues = newValues.map((val) => dataset.newItem(val.text));
+		                dataset.pushApply(newValues);
+		            }
+		            if (!workerExists && status === newStatus) {
+		                dataset.push(dataset.newItem(from));
+		            }
 		        });
-		    });
-
-		    return button_templates
+		    }
 		}
 
-		button_template = get_button_templates;
-		return button_template;
+		UIManager_1 = new UIManager();
+		return UIManager_1;
 	}
 
 	var apiInterpreter;
@@ -26356,25 +26443,14 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 	function requireApiInterpreter () {
 		if (hasRequiredApiInterpreter) return apiInterpreter;
 		hasRequiredApiInterpreter = 1;
-		const {workers} = requireConstants();
+		const {api_url, endpoints, workers, statuses, successTriggers} = requireConstants();
+		const UIManager = requireUIManager();
 
 		class ApiInterpreter {
-		    datasets = {
-		        status : null,
-		        worker : {}
-		    }
-		    constructor() {
-		        Object.keys(workers).forEach(function(workerName) {
-		            this.datasets.worker[workerName] = null;
-		        }, this);
-		        
-		    }
+		    statusPath = endpoints.status
 
-		    acquireDatasets(type, datasets) {
-		        for (let entry in datasets) {
-		            const dataset = datasets[entry];
-		            this.datasets[type][entry] = dataset;
-		        }
+		    constructor() {
+
 		    }
 
 		    async interpretResponse(from, response) {
@@ -26385,74 +26461,63 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		        }
 		        if (typeof content !== 'undefined') {
 		            if (content.type) {
-		                const dataset = this.datasets.worker[from];
+		                const dataset = UIManager.datasets.workers[from];
 		                const messageType = content.type.toLowerCase();
-		                // console.log(messageType, 'status', messageType === 'status');
+		                
 		                if (messageType === 'success') {
-		                    const item = dataset.newItem(content.message);
-		                    dataset.push(item);
+		                    dataset.push(dataset.newItem(content.message));
 		                    return true;
 		                }
 		                else if (messageType === 'info') {
-		                    console.log(content.message);
-		                    // dataset.push(message.message)
+		                    dataset.push(dataset.newItem(content.message));
 		                }
 		                else if (messageType === 'status') {
-		                    // console.log(content.message_stack);
 		                    const items = [];
 		                    content.message_stack.forEach(function(message) {
 		                        items.push(dataset.newItem('MANUAL STATUS CHECK - ' + message));
 		                    });
 		                    dataset.pushApply(items);
+		                    UIManager.updateScroll(from);
+
+		                    // Propagate state on action buttons
+		                    const newStatus = this.getStatusFromMessage(content.status);
+		                    UIManager.updateButtonState(workerName, newStatus);
+		                    UIManager.filterStatuses(from, newStatus);
 		                }
 		                else if (messageType === 'end_status') {
-		                    const item = dataset.newItem(content.message);
-		                    dataset.push(item);
+		                    // message is the success message, but may not : display and don't rely on
+		                    dataset.push(dataset.newItem(content.message));
+
 		                    const items = [];
+		                    let isSuccessTrigger = false;
 		                    content.message_stack.forEach(function(message) {
+		                        if (successTriggers[from].indexOf(message.slice(22).trim()) !== -1)
+		                            isSuccessTrigger = true;
 		                        items.push(dataset.newItem('FINAL STATUS CHECK - ' + message));
 		                    });
 		                    dataset.pushApply(items);
-		                    return true;
+		                    
+		                    let newStatus;
+		                    if (isSuccessTrigger) {
+		                        newStatus = statuses.stopped;
+		                        UIManager.filterStatuses(from, newStatus);
+		                        UIManager.updateButtonState(from, newStatus);
+		                    }
+
+		                    return isSuccessTrigger;
 		                }
 		                else if (messageType === 'error') {
-		                    const item = dataset.newItem(content.message);
-		                    dataset.push(item);
+		                    dataset.push(dataset.newItem(content.message));
 		                    return false;
 		                }
 		            }
 		        }
 		    }
-		}
 
-		apiInterpreter = new ApiInterpreter();
-		return apiInterpreter;
-	}
-
-	var healthCheck;
-	var hasRequiredHealthCheck;
-
-	function requireHealthCheck () {
-		if (hasRequiredHealthCheck) return healthCheck;
-		hasRequiredHealthCheck = 1;
-		const {api_url, endpoints, workers} = requireConstants(); 
-
-		class HealthCheck {
-		    statusPath = endpoints['status']
-		    datasets = {
-		        status : null,
-		        worker : {}
-		    }
-
-		    constructor() {
-		        Object.keys(workers).forEach(function(workerName) {
-		            this.datasets.worker[workerName] = null;
-		        }, this);
-		    }
 		    // Here we're supposed to have received the response from the server, and be sure it's a success
 		    startupCheck(workerName) {
 		        const self = this;
-		        let i = 0, max  = 7;
+		        let i = 0, max  = 14;
 		        const checkInterval = setInterval(function() {
 		            self.specificStatusRequest(workerName).then(async function(response) {
 		                const headers = response.headers;
@@ -26462,12 +26527,29 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		                        content = await response.json();
 		                    }
 		                    if (typeof content !== 'undefined') {
-		                        const dataset = self.datasets.worker[workerName];
+		                        const dataset = UIManager.datasets.workers[workerName];
 		                        const items = [];
+		                        let isSuccessTrigger = false;
 		                        content.message_stack.forEach(function(message) {
+		                            if (successTriggers[workerName].indexOf(message.slice(22).trim()) !== -1)
+		                                isSuccessTrigger = true;
 		                            items.push(dataset.newItem(message));
+		                            if (/ERROR/i.test(message)) {
+		                                self.handleError(checkInterval, workerName);
+		                            }
 		                        });
 		                        dataset.pushApply(items);
+		                        UIManager.updateScroll(workerName);
+
+		                        if (/ERROR/i.test(content.status)) {
+		                            self.handleError(checkInterval, workerName);
+		                        }
+		                        else if (isSuccessTrigger) {
+		                            const newStatus = statuses.running;
+		                            UIManager.filterStatuses(workerName, newStatus);
+		                            UIManager.updateButtonState(workerName, newStatus);
+		                        }
+		                        
 		                    }
 		                }
 		            });
@@ -26475,6 +26557,36 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		                clearInterval(checkInterval);
 		            i++;
 		        }, 1000);
+		    }
+
+		    appInitCheck(key, originButtonGroup) {
+		        const self = this;
+		        const workerName = Object.keys(workers)[key];
+		        self.specificStatusRequest(workerName).then(async function(response) {
+		            const headers = response.headers;
+		            if (response && response.ok) {
+		                let content;
+		                if (headers.get('content-type') === 'application/json') {
+		                    content = await response.json();
+		                }
+		                if (typeof content !== 'undefined') {
+		                    let newStatus;
+		                    if (/ERROR/i.test(content.status)) {
+		                        self.handleError(0, workerName, originButtonGroup);
+		                    }
+		                    else {
+		                        if (/running/i.test(content.status)) {
+		                            newStatus = statuses.running;
+		                        }
+		                        else if (/stopped/i.test(content.status)) {
+		                            newStatus = statuses.stopped;
+		                        }
+		                        UIManager.filterStatuses(workerName, newStatus);
+		                        UIManager.updateButtonState(workerName, newStatus);
+		                    }
+		                }
+		            }
+		        });
 		    }
 
 		    specificStatusRequest(workerName) {
@@ -26487,19 +26599,31 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		            body: JSON.stringify({
 		                'name' : workerName
 		            })
+		        }).catch(function(error) {
+		            console.error(error);
 		        });
 		    }
 
-		    acquireDatasets(type, datasets) {
-		        for (let entry in datasets) {
-		            const dataset = datasets[entry];
-		            this.datasets[type][entry] = dataset;
-		        }
+		    handleError(intervalID, workerName) {
+		        UIManager.updateButtonState(workerName, statuses.stopped);
+		        UIManager.filterStatuses(workerName, statuses.error);
+		        clearInterval(intervalID);
+		    }
+
+		    getStatusFromMessage(status) {
+		        let newStatus;
+		        if (/ERROR/.test(status))
+		            newStatus = statuses.error;
+		        else if (/running/.test(status))
+		            newStatus = statuses.running;
+		        else if (/stopped/.test(status))
+		            newStatus = statuses.stopped;
+		        return newStatus;
 		    }
 		}
 
-		healthCheck = new HealthCheck();
-		return healthCheck;
+		apiInterpreter = new ApiInterpreter();
+		return apiInterpreter;
 	}
 
 	var workerButtonsGroup;
@@ -26509,12 +26633,43 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		if (hasRequiredWorkerButtonsGroup) return workerButtonsGroup;
 		hasRequiredWorkerButtonsGroup = 1;
 		const {TemplateFactory} = requireFormant();
-		const {status} = requireConstants();
+		const {statuses} = requireConstants();
 		const get_button_templates = requireButton_template();
+		const get_api_requests = requireApi();
 		const apiInterpreter = requireApiInterpreter();
-		const healthCheck = requireHealthCheck();
 
-		workerButtonsGroup = function(workerName, endpointNames, requests) {
+		workerButtonsGroup = function(workerName, endpointNames) {
+
+		    const requests = get_api_requests(workerName);
+
+		    function makeStandardRequest(endpoint) {
+		        const self = this;
+		        requests[endpoint]()
+		            .catch(function(error) {
+		                console.error(error);
+		            })
+		            .then(function(response) {
+		                if (response && response.ok) {
+		                    const isSuccess = apiInterpreter.interpretResponse(workerName, response);  // passing a ref to self is a small hack 
+		                                                                                            // to be able to refresh statuses when calling /status_worker
+		                    if (isSuccess) {
+		                        if (endpoint === 'run') {
+		                            apiInterpreter.startupCheck(workerName);
+		                        }
+		                    }
+		                }
+		            });
+		    }
+
+		    function makeRestartRequest() {
+		        const self = this;
+		        makeStandardRequest.call(this, 'stop');
+
+		        setTimeout(function() {
+		            makeStandardRequest.call(self, 'run');
+		        }, 3000);
+		    }
+
 		    return TemplateFactory.createDef({
 		        host : TemplateFactory.createHostDef({
 		            type : 'CompoundComponent',
@@ -26527,15 +26682,15 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		                    cbOnly : true,
 		                    from : 'statusFeedback',
 		                    subscribe : function(value) {
-		                        if (value === status['running']) {
+		                        if (value === statuses.running) {
 		                            this._children[0].view.setPresence(false);
 		                            this._children[1].view.setPresence(true);
 		                        }
-		                        else if (value === status['stopped']) {
+		                        else if (value === statuses.stopped) {
 		                            this._children[0].view.setPresence(true);
 		                            this._children[1].view.setPresence(false);
 		                        }
-		                        else if (value === status['error']) {
+		                        else if (value === statuses.error) {
 		                            this._children[0].view.setPresence(false);
 		                            this._children[1].view.setPresence(false);
 		                        }
@@ -26546,25 +26701,14 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		                {
 		                    on : 'clicked_ok',
 		                    subscribe : function(e) {
-		                        const self = this;
 		                        const endpoint = endpointNames[e.data.key];
-		                        requests[endpoint]()
-		                            .catch(function(error) {
-		                                console.log(error);
-		                            })
-		                            .then(function(response) {
-		                                if (response && response.ok) {
-		                                    const isSuccess = apiInterpreter.interpretResponse(workerName, response);
-		                                    if (isSuccess) {
-		                                        if (endpoint === 'run') {
-		                                            self.streams.statusFeedback.value = status['running'];
-		                                            healthCheck.startupCheck(workerName);
-		                                        }
-		                                        else if (endpoint === 'stop')
-		                                            self.streams.statusFeedback.value = status['stopped'];
-		                                    }
-		                                }
-		                            });
+		                        if (e.data.key === 3) {
+		                            makeRestartRequest.call(this);
+		                        }
+		                        else {
+		                            makeStandardRequest.call(this, endpoint);
+		                        }
+		                        
 		                    }
 		                }
 		            ]
@@ -26582,9 +26726,10 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		if (hasRequiredListTemplate) return listTemplate;
 		hasRequiredListTemplate = 1;
 		const {App, TemplateFactory} = requireFormant();
-		const {status} = requireConstants();
+		const {statuses} = requireConstants();
 
 		const listHostTemplate = TemplateFactory.createHostDef({
+		    type : 'ComponentWithView',
 			nodeName : 'ul',
 		    attributes : [
 		        {className : 'list_host'}
@@ -26636,31 +26781,51 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		if (hasRequiredStatusColumnsTemplate) return statusColumnsTemplate;
 		hasRequiredStatusColumnsTemplate = 1;
 		const {App, TemplateFactory} = requireFormant();
-		const {status} = requireConstants();
+		// const {statuses} = require('../constants/constants')
 
-		function get_column_templates(categories) {
+		function get_column_templates(categories, showButton = false) {
 		    const list_templates = {};
 
-		    Object.values(categories).forEach(function(status) {
-		        list_templates[status] = TemplateFactory.createDef({
+		    Object.values(categories).forEach(function(category) {
+		        list_templates[category] = TemplateFactory.createDef({
 		            host : TemplateFactory.createHostDef({
 		                type : 'CompoundComponent',
 		                nodeName : 'section'
 		            }),
 		            members : [
-		                TemplateFactory.createHostDef({
-		                    type : 'ComponentWithView',
-		                    nodeName : 'header',
-		                    attributes : [
-		                        {className : 'column_header'},
-		                        {textContent : status}
+		                TemplateFactory.createDef({
+		                    host : TemplateFactory.createHostDef({
+		                        type : 'CompoundComponent',
+		                        nodeName : 'header',
+		                        attributes : [
+		                            {className : 'column_header'}
+		                        ]
+		                    }),
+		                    members : [
+		                        TemplateFactory.createHostDef({
+		                            type : 'ComponentWithView',
+		                            nodeName : 'span',
+		                            attributes : [
+		                                {textContent : category}
+		                            ]
+		                        }),
+		                        TemplateFactory.createDef({
+		                            host : TemplateFactory.createHostDef({
+		                                type : 'ClickableComponent',
+		                                nodeName : showButton ? 'button' : 'span',
+		                                attributes : [
+		                                    {title : showButton ? 'clear logs' : ''},
+		                                    {className : showButton ? 'backspace' : ''}
+		                                ]
+		                            })
+		                        })
 		                    ]
 		                }),
 		                TemplateFactory.createHostDef({
 		                    type : 'ComponentWithView',
 		                    nodeName : 'div',
 		                    attributes : [
-		                        {className : 'column_content'}
+		                        {className : showButton ? 'column_content scrollable' : 'column_content'}
 		                    ]
 		                })
 		            ]
@@ -26715,7 +26880,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		                    type : 'CompoundComponent',
 		                    nodeName : 'div',
 		                    attributes : [
-		                        {className : 'row column_content'}
+		                        {className : title === 'Logs' ? 'row column_content logs' : 'row column_content'}
 		                    ]
 		                })
 		            })
@@ -26727,14 +26892,14 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		return actionColumnsTemplate;
 	}
 
-	var innerCSS = "* {\r\n    box-sizing : border-box;\r\n}\r\n\r\nh1, h2, h3, h4, h5, h6 {\r\n    margin : 0px;\r\n  }\r\n  \r\n  .row {\r\n    display : flex;\r\n    justify-content : space-evenly;\r\n  }\r\n  \r\n  .margin_top {\r\n    margin-top: 38px;\r\n  }\r\n  \r\n  button {\r\n    display : block;\r\n    justify-content : center; /*hack cause we don't run scoped CSS, so the framework shall display flex at some point*/\r\n    background-repeat : no-repeat;\r\n    color : #000;\r\n    font-size : 15px;\r\n    width : 101px;\r\n    margin : 7px;\r\n    padding : 5px 0px;\r\n    border : none;\r\n    border-radius : 7px;\r\n    cursor : pointer;\r\n  }\r\n  \r\n  .run_button {\r\n    position : absolute;\r\n    top : 7px;\r\n    left : 7px;\r\n    background-color : #00904400;\r\n    filter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(100%) contrast(102%);\r\n    background-image: url(img/play-circle-outline.svg);\r\n  }\r\n  \r\n  .stop_button {\r\n    position : absolute;\r\n    top : 7px;\r\n    left : 7px;\r\n    background-color : #BD222200;\r\n    filter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(89%) contrast(89%);\r\n    background-image: url(img/stop-circle-outline.svg);\r\n  }\r\n  \r\n  .status_button {\r\n    position : absolute;\r\n    bottom : 7px;\r\n    right : 7px;\r\n    background-color : #5550;\r\n    filter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(95%) contrast(84%);\r\n    background-image: url(img/cube-outline.svg);\r\n    background-position : right center;\r\n  }\r\n  \r\n  .restart_button {\r\n    position : absolute;\r\n    bottom : 7px;\r\n    left : 7px;\r\n    background-color : #22779900;\r\n    filter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(91%) contrast(90%);\r\n    background-image: url(img/refresh-outline.svg);\r\n  }\r\n\r\n  .run_button:hover {\r\n    filter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(200%) contrast(102%);\r\n  }\r\n  \r\n  .stop_button:hover {\r\n    filter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(180%) contrast(89%);\r\n  }\r\n  \r\n  .status_button:hover {\r\n    filter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);\r\n  }\r\n  \r\n  .restart_button:hover {\r\n    filter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(180%) contrast(90%);\r\n  }\r\n\r\n  .column_content {\r\n    margin-top : 15px;\r\n}\r\n\r\n.column_content div {\r\n  position : relative;\r\n  background-color: #22242B;\r\n  min-width : 224px;\r\n  padding : 7px;\r\n  border : 2px solid #1A1824;\r\n  border-width : 2px 1px 1px 1px;\r\n  border-color : #997755 #1A1824 #1A1824 #443311;\r\n  border-radius : 12px;\r\n}\r\n\r\n .column_content h4 {\r\n    text-align : center;\r\n    margin : 77px 21px 77px 21px;\r\n  }\r\n\r\n  ul {\r\n    font-family : consolas;\r\n    padding : 0px;\r\n  }\r\n\r\n  li {\r\n    list-style-type : none;\r\n    font-size: 11px;\r\n  }\r\n\r\n  .success {\r\n    color : #228855;\r\n  }";
+	var innerCSS = "* {\r\n\tbox-sizing : border-box;\r\n}\r\n\r\n:host {\r\n\tdisplay : flex;\r\n\talign-items : center;\r\n\tmax-width : 1801px;\r\n}\r\n:host > section {\r\n\tmin-width : 98%;\r\n\tmin-height : 152px;\r\n}\r\n\r\nh1, h2, h3, h4, h5, h6 {\r\n\tmargin : 0px;\r\n}\r\n\r\nheader {\r\n\theight : 20px;\r\n}\r\n  \r\n  .row {\r\n\tdisplay : flex;\r\n\tjustify-content : space-around;\r\n\tgap : 17px;\r\n  }\r\n\r\n.row.logs section {\r\n\tflex : 1 1 0;\r\n}\r\n  \r\n  .margin_top {\r\n\tmargin-top: 24px;\r\n  }\r\n  \r\n  button {\r\n\tdisplay : block;\r\n\tjustify-content : end; /*hack cause we don't run scoped CSS, so the framework shall display flex at some point*/\r\n\ttext-align : right;\r\n\tbackground-repeat : no-repeat;\r\n\tcolor : #000;\r\n\tfont-size : 15px;\r\n\twidth : 74px;\r\n\tmargin : 4px;\r\n\tpadding : 5px 0px;\r\n\tborder : none;\r\n\tborder-radius : 7px;\r\n\tcursor : pointer;\r\n  }\r\n  \r\n  .run_button {\r\n\tposition : absolute;\r\n\ttop : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #00904400;\r\n\tfilter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(100%) contrast(102%);\r\n\tbackground-image: url(img/play-circle-outline.svg);\r\n  }\r\n  \r\n  .stop_button {\r\n\tposition : absolute;\r\n\ttop : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #BD222200;\r\n\tfilter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(89%) contrast(89%);\r\n\tbackground-image: url(img/stop-circle-outline.svg);\r\n  }\r\n  \r\n  .status_button {\r\n\tposition : absolute;\r\n\tbottom : 7px;\r\n\tright : 7px;\r\n\tbackground-color : #5550;\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(95%) contrast(84%);\r\n\tbackground-image: url(img/cube-outline.svg);\r\n\tbackground-position : right center;\r\n\ttext-align : left;\r\n  }\r\n  \r\n  .restart_button {\r\n\tposition : absolute;\r\n\tbottom : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #22779900;\r\n\tfilter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(91%) contrast(90%);\r\n\tbackground-image: url(img/refresh-outline.svg);\r\n  }\r\n\r\n  .run_button:hover {\r\n\tfilter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(200%) contrast(102%);\r\n  }\r\n  \r\n  .stop_button:hover {\r\n\tfilter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(180%) contrast(89%);\r\n  }\r\n  \r\n  .status_button:hover {\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);\r\n  }\r\n  \r\n  .restart_button:hover {\r\n\tfilter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(180%) contrast(90%);\r\n  }\r\n\r\n  .column_content {\r\n\tmargin-top : 5px;\r\n}\r\n\r\n.column_content.scrollable ul {\r\n\theight : 380px;\r\n\tscrollbar-width: thin;\r\n\toverflow-y : scroll;\r\n}\r\n\r\n.column_content.scrollable ul::-webkit-scrollbar-thumb {\r\n\tborder-radius : 4px;\r\n}\r\n\r\n.column_header {\r\n\tline-height : 18px;\r\n}\r\n\r\n.column_content div {\r\n  position : relative;\r\n  background-color: #22242B;\r\n  min-width : 189px;\r\n  max-width : 634px;\r\n  padding : 7px;\r\n  border : 2px solid #1A1824;\r\n  border-width : 2px 1px 1px 1px;\r\n  border-color : #997755 #1A1824 #1A1824 #443311;\r\n  border-radius : 7px;\r\n}\r\n\r\n .column_content h4 {\r\n\ttext-align : center;\r\n\tmargin : 57px 21px 57px 21px;\r\n  }\r\n\r\n  ul {\r\n\tfont-family : consolas;\r\n\tpadding : 0px;\r\n\tmargin : 5px 0px;\r\n  }\r\n\r\n  li {\r\n\tlist-style-type : none;\r\n\tfont-size: 11px;\r\n  }\r\n\r\n  .success {\r\n\tcolor : #228855;\r\n  }\r\n\r\n  .backspace {\r\n\tdisplay : inline-block;\r\n\tposition : relative;\r\n\ttop : -4px;\r\n\tbackground-color  : #0000;\r\n\tbackground-image: url(img/backspace-outline.svg);\r\n\tbackground-repeat : no-repeat;\r\n\tcolor : #EFEFEF;\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);\r\n\twidth : 19px;\r\n\theight : 19px;\r\n\tmargin : 7px;\r\n\tpadding : 0px 0px;\r\n\tcursor : pointer;\r\n  }";
 
 	var innerCSS$1 = /*#__PURE__*/Object.freeze({
 		__proto__: null,
 		default: innerCSS
 	});
 
-	var require$$9 = /*@__PURE__*/getAugmentedNamespace(innerCSS$1);
+	var require$$8 = /*@__PURE__*/getAugmentedNamespace(innerCSS$1);
 
 	var app;
 	var hasRequiredApp;
@@ -26743,20 +26908,15 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		if (hasRequiredApp) return app;
 		hasRequiredApp = 1;
 		const {App, TemplateFactory} = requireFormant();
-		const {endpoints, workers, status} = requireConstants();
-		const get_api_requests = requireApi();
+		const {endpoints, workers, statuses} = requireConstants();
 		const getWorkerButtonsGroup = requireWorkerButtonsGroup();
 		const getListsTemplates = requireListTemplate();
 		const get_column_templates = requireStatusColumnsTemplate();
 		const get_column_template = requireActionColumnsTemplate();
 		const apiInterpreter = requireApiInterpreter();
-		const healthCheck = requireHealthCheck();
+		const UIManager = requireUIManager();
 
-		const innerStyles = require$$9;
-
-		// Object.keys(workers).map(function(worker) {
-		// 	console.log(Object.values(get_button_templates(worker)))
-		// })
+		const innerStyles = require$$8;
 
 
 		/**
@@ -26769,23 +26929,22 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 
 					const root = new App.RootView();
 
-					// Status Lists section
+					// statuses Lists section
 					const listsSectionTemplate = get_column_template('Status');
-					listsSectionTemplate.members[1].members = Object.values(get_column_templates(status));
+					listsSectionTemplate.members[1].members = Object.values(get_column_templates(statuses));
 					const listsComponent = new App.componentTypes.CompoundComponent(listsSectionTemplate, root.view);
 
-					const statusNames = Object.values(status);
+					const statusNames = Object.values(statuses);
 					const listDatasets = {};
-					Object.values(getListsTemplates(status)).forEach(function(listTemplate, key) {
-						const list = new App.coreComponents.IteratingComponent(listTemplate.host, listsComponent._children[1]._children[key]._children[0].view, listTemplate.item);
+					Object.values(getListsTemplates(statuses)).forEach(function(listTemplate, key) {
+						const list = new App.coreComponents.IteratingComponent(listTemplate.host, listsComponent._children[1]._children[key]._children[1].view, listTemplate.item);
 						listDatasets[statusNames[key]] = list.typedSlot;
 					});
 					
 					// Buttons section
 					const endpointNames = Object.keys(endpoints);
 					const buttonSectionMembers = Object.keys(workers).map(function(worker, key) {
-						const requests = get_api_requests(worker);
-						const workerActionsTemplate = getWorkerButtonsGroup(worker, endpointNames, requests);
+						const workerActionsTemplate = getWorkerButtonsGroup(worker, endpointNames);
 						workerActionsTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : worker}]}));
 						return workerActionsTemplate
 					});
@@ -26797,22 +26956,40 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 
 					// Logs Lists section
 					const logsSectionTemplate = get_column_template('Logs');
-					logsSectionTemplate.members[1].members = Object.values(get_column_templates(workers));
+					logsSectionTemplate.members[1].members = Object.values(get_column_templates(workers, 'showButton'));
 					const logsComponent = new App.componentTypes.CompoundComponent(logsSectionTemplate, root.view);
 
-					const logListDatasets = {};
+					const logListDatasets = {}, listsComponents = [];
 					const workerNames = Object.values(workers);
 					Object.values(getListsTemplates(workers)).forEach(function(listTemplate, key) {
+						const wipeButton = logsComponent._children[1]._children[key]._children[0]._children[1];
 						const list = new App.coreComponents.IteratingComponent(listTemplate.host, logsComponent._children[1]._children[key]._children[1].view, listTemplate.item);
+						listsComponents.push(list);
+						wipeButton.addEventListener('clicked_ok', function(e) {list.typedSlot.resetLength();});
 						logListDatasets[workerNames[key]] = list.typedSlot;
 					});
 
-					apiInterpreter.acquireDatasets('worker', logListDatasets);
-					healthCheck.acquireDatasets('worker', logListDatasets);
+
+					//  Pass lists to API-responses interpreters
+					UIManager.acquireDatasets('statuses', listDatasets);
+					UIManager.acquireDatasets('workers', logListDatasets);
 
 					App.renderDOM();
-					workerCards._children[1]._children.forEach(function(workerCard) { workerCard.streams.statusFeedback.value = status['stopped'];});
 
+					// SET INITIAL STATE (Things that need the DOM to be rendered to have effect)
+
+					// Acquire scrollable elements to maintain last logs visible
+					listsComponents.forEach((listComponent, key) => {
+						UIManager.acquireLogElement(workerNames[key], listComponent.view.getMasterNode());
+						UIManager.acquireLogElement(workerNames[key], listComponent.view.getMasterNode());
+					});
+					// Check statuses of all workers at initialization (in case the page has been reloaded on an intermediate state)
+					workerCards._children[1]._children.forEach(function(workerCard) { workerCard.streams.statusFeedback.value = statuses['stopped'];}); // Set state optimistically at first
+					workerCards._children[1]._children.forEach(function(buttonComponent, key) {
+						apiInterpreter.appInitCheck(key, buttonComponent);
+						UIManager.acquireButtonRefreshStreams(workerNames[key], buttonComponent.streams.statusFeedback);
+					});
+					
 					// inner styles
 					const styleElem = document.createElement('style');
 					styleElem.innerHTML = innerStyles.default;

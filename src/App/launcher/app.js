@@ -1,18 +1,13 @@
 const {App, TemplateFactory} = require('formantjs');
-const {endpoints, workers, status} = require('../constants/constants')
-const get_api_requests = require('../api/api')
-const getWorkerButtonsGroup = require('../templates/workerButtonsGroup')
-const getListsTemplates = require('../templates/listTemplate')
-const get_column_templates = require('../templates/statusColumnsTemplate')
-const get_column_template = require('../templates/actionColumnsTemplate')
-const apiInterpreter = require ('../api/apiInterpreter')
-const healthCheck = require('../api/healthCheck')
+const {endpoints, workers, statuses} = require('../constants/constants');
+const getWorkerButtonsGroup = require('../templates/workerButtonsGroup');
+const getListsTemplates = require('../templates/listTemplate');
+const get_column_templates = require('../templates/statusColumnsTemplate');
+const get_column_template = require('../templates/actionColumnsTemplate');
+const apiInterpreter = require ('../api/apiInterpreter');
+const UIManager = require('../UIManager/UIManager');
 
-const innerStyles = require('../innerCSS/innerCSS.css')
-
-// Object.keys(workers).map(function(worker) {
-// 	console.log(Object.values(get_button_templates(worker)))
-// })
+const innerStyles = require('../innerCSS/innerCSS.css');
 
 
 /**
@@ -25,23 +20,22 @@ module.exports = function(parentView) {
 
 			const root = new App.RootView();
 
-			// Status Lists section
+			// statuses Lists section
 			const listsSectionTemplate = get_column_template('Status');
-			listsSectionTemplate.members[1].members = Object.values(get_column_templates(status));
+			listsSectionTemplate.members[1].members = Object.values(get_column_templates(statuses));
 			const listsComponent = new App.componentTypes.CompoundComponent(listsSectionTemplate, root.view)
 
-			const statusNames = Object.values(status)
+			const statusNames = Object.values(statuses)
 			const listDatasets = {}
-			Object.values(getListsTemplates(status)).forEach(function(listTemplate, key) {
-				const list = new App.coreComponents.IteratingComponent(listTemplate.host, listsComponent._children[1]._children[key]._children[0].view, listTemplate.item)
+			Object.values(getListsTemplates(statuses)).forEach(function(listTemplate, key) {
+				const list = new App.coreComponents.IteratingComponent(listTemplate.host, listsComponent._children[1]._children[key]._children[1].view, listTemplate.item)
 				listDatasets[statusNames[key]] = list.typedSlot
 			});
 			
 			// Buttons section
 			const endpointNames = Object.keys(endpoints)
 			const buttonSectionMembers = Object.keys(workers).map(function(worker, key) {
-				const requests = get_api_requests(worker)
-				const workerActionsTemplate = getWorkerButtonsGroup(worker, endpointNames, requests);
+				const workerActionsTemplate = getWorkerButtonsGroup(worker, endpointNames);
 				workerActionsTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : worker}]}));
 				return workerActionsTemplate
 			});
@@ -53,22 +47,40 @@ module.exports = function(parentView) {
 
 			// Logs Lists section
 			const logsSectionTemplate = get_column_template('Logs');
-			logsSectionTemplate.members[1].members = Object.values(get_column_templates(workers));
+			logsSectionTemplate.members[1].members = Object.values(get_column_templates(workers, 'showButton'));
 			const logsComponent = new App.componentTypes.CompoundComponent(logsSectionTemplate, root.view)
 
-			const logListDatasets = {}
+			const logListDatasets = {}, listsComponents = []
 			const workerNames = Object.values(workers)
 			Object.values(getListsTemplates(workers)).forEach(function(listTemplate, key) {
-				const list = new App.coreComponents.IteratingComponent(listTemplate.host, logsComponent._children[1]._children[key]._children[1].view, listTemplate.item)
+				const wipeButton = logsComponent._children[1]._children[key]._children[0]._children[1];
+				const list = new App.coreComponents.IteratingComponent(listTemplate.host, logsComponent._children[1]._children[key]._children[1].view, listTemplate.item);
+				listsComponents.push(list)
+				wipeButton.addEventListener('clicked_ok', function(e) {list.typedSlot.resetLength()})
 				logListDatasets[workerNames[key]] = list.typedSlot
 			});
 
-			apiInterpreter.acquireDatasets('worker', logListDatasets)
-			healthCheck.acquireDatasets('worker', logListDatasets)
+
+			//  Pass lists to API-responses interpreters
+			UIManager.acquireDatasets('statuses', listDatasets)
+			UIManager.acquireDatasets('workers', logListDatasets)
 
 			App.renderDOM()
-			workerCards._children[1]._children.forEach(function(workerCard) { workerCard.streams.statusFeedback.value = status['stopped']})
 
+			// SET INITIAL STATE (Things that need the DOM to be rendered to have effect)
+
+			// Acquire scrollable elements to maintain last logs visible
+			listsComponents.forEach((listComponent, key) => {
+				UIManager.acquireLogElement(workerNames[key], listComponent.view.getMasterNode());
+				UIManager.acquireLogElement(workerNames[key], listComponent.view.getMasterNode());
+			});
+			// Check statuses of all workers at initialization (in case the page has been reloaded on an intermediate state)
+			workerCards._children[1]._children.forEach(function(workerCard) { workerCard.streams.statusFeedback.value = statuses['stopped']}); // Set state optimistically at first
+			workerCards._children[1]._children.forEach(function(buttonComponent, key) {
+				apiInterpreter.appInitCheck(key, buttonComponent);
+				UIManager.acquireButtonRefreshStreams(workerNames[key], buttonComponent.streams.statusFeedback);
+			})
+			
 			// inner styles
 			const styleElem = document.createElement('style')
 			styleElem.innerHTML = innerStyles.default
