@@ -1,5 +1,5 @@
 const constants = {
-    api_url : 'http://127.0.0.1:3001',
+    api_url : 'http://127.0.0.1:51312',
     endpoints : {
         run : '/start_worker',
         stop : '/stop_worker',

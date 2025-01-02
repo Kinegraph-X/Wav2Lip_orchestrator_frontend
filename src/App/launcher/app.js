@@ -1,6 +1,7 @@
 const {App, TemplateFactory} = require('formantjs');
 const {endpoints, workers, statuses} = require('../constants/constants');
 const getWorkerButtonsGroup = require('../templates/workerButtonsGroup');
+const getSartAllButton = require('../templates/startAllButtonsGroup');
 const getListsTemplates = require('../templates/listTemplate');
 const get_column_templates = require('../templates/statusColumnsTemplate');
 const get_column_template = require('../templates/actionColumnsTemplate');
@@ -33,17 +34,27 @@ module.exports = function(parentView) {
 			});
 			
 			// Buttons section
-			const endpointNames = Object.keys(endpoints)
-			const buttonSectionMembers = Object.keys(workers).map(function(worker, key) {
-				const workerActionsTemplate = getWorkerButtonsGroup(worker, endpointNames);
-				workerActionsTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : worker}]}));
-				return workerActionsTemplate
-			});
+			
+			const endpointNames = Object.keys(endpoints);
+			let buttonSectionMembers
+			if (location.pathname.includes('admin')) {
+				buttonSectionMembers = Object.keys(workers).map(function(worker, key) {
+					const workerActionsTemplate = getWorkerButtonsGroup(worker, endpointNames);
+					workerActionsTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : worker}]}));
+					return workerActionsTemplate
+				});
+			}
+			else {
+				const workerActionTemplate = getSartAllButton(Object.values(workers), endpointNames)
+				workerActionTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : 'Run Avatar'}]}));
+				buttonSectionMembers = [
+					workerActionTemplate
+				]
+			}
 			
 			const buttonSectionTemplate = get_column_template('Actions');
 			buttonSectionTemplate.members[1].members = buttonSectionMembers
 			const workerCards = new App.componentTypes.CompoundComponent(buttonSectionTemplate, root.view)
-			
 
 			// Logs Lists section
 			const logsSectionTemplate = get_column_template('Logs');
@@ -75,11 +86,21 @@ module.exports = function(parentView) {
 				UIManager.acquireLogElement(workerNames[key], listComponent.view.getMasterNode());
 			});
 			// Check statuses of all workers at initialization (in case the page has been reloaded on an intermediate state)
-			workerCards._children[1]._children.forEach(function(workerCard) { workerCard.streams.statusFeedback.value = statuses['stopped']}); // Set state optimistically at first
-			workerCards._children[1]._children.forEach(function(buttonComponent, key) {
-				apiInterpreter.appInitCheck(key, buttonComponent);
-				UIManager.acquireButtonRefreshStreams(workerNames[key], buttonComponent.streams.statusFeedback);
-			})
+			if (location.pathname.includes('admin')) {
+				workerCards._children[1]._children.forEach(function(workerCard) { workerCard.streams.statusFeedback.value = statuses['stopped']}); // Set state optimistically at first
+				workerCards._children[1]._children.forEach(function(buttonComponent, key) {
+					apiInterpreter.appInitCheck(key, buttonComponent);
+					UIManager.acquireButtonRefreshStreams(workerNames[key], buttonComponent.streams.statusFeedback);
+				})
+			}
+			else {
+				const buttonComponent = workerCards._children[1]._children[0]
+				buttonComponent.streams.statusFeedback.value = statuses['stopped'];
+				Object.keys(workers).forEach(function(workerName, key) {
+					apiInterpreter.appInitCheck(key, buttonComponent);
+					UIManager.acquireButtonRefreshStreams(workerName, buttonComponent.streams.statusFeedback);
+				});
+			}
 			
 			// inner styles
 			const styleElem = document.createElement('style')
