@@ -1,10 +1,12 @@
 const {App, TemplateFactory} = require('formantjs');
 const {endpoints, workers, statuses} = require('../constants/constants');
+const constants = require('../constants/constants');
 const getWorkerButtonsGroup = require('../templates/workerButtonsGroup');
-const getSartAllButton = require('../templates/startAllButtonsGroup');
+const getStartAllButton = require('../templates/startAllButtonsGroup');
 const getListsTemplates = require('../templates/listTemplate');
 const get_column_templates = require('../templates/statusColumnsTemplate');
 const get_column_template = require('../templates/actionColumnsTemplate');
+const {makeStandardRequest} = require('../api/allButtonsRequests')
 const apiInterpreter = require ('../api/apiInterpreter');
 const UIManager = require('../UIManager/UIManager');
 
@@ -37,7 +39,7 @@ module.exports = function(parentView) {
 			
 			const endpointNames = Object.keys(endpoints);
 			let buttonSectionMembers
-			if (location.pathname.includes('admin')) {
+			if (location.pathname.includes(constants.admin)) {
 				buttonSectionMembers = Object.keys(workers).map(function(worker, key) {
 					const workerActionsTemplate = getWorkerButtonsGroup(worker, endpointNames);
 					workerActionsTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : worker}]}));
@@ -45,7 +47,7 @@ module.exports = function(parentView) {
 				});
 			}
 			else {
-				const workerActionTemplate = getSartAllButton(Object.values(workers), endpointNames)
+				const workerActionTemplate = getStartAllButton(Object.values(workers), endpointNames)
 				workerActionTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : 'Run Avatar'}]}));
 				buttonSectionMembers = [
 					workerActionTemplate
@@ -86,7 +88,7 @@ module.exports = function(parentView) {
 				UIManager.acquireLogElement(workerNames[key], listComponent.view.getMasterNode());
 			});
 			// Check statuses of all workers at initialization (in case the page has been reloaded on an intermediate state)
-			if (location.pathname.includes('admin')) {
+			if (location.pathname.includes(constants.admin)) {
 				workerCards._children[1]._children.forEach(function(workerCard) { workerCard.streams.statusFeedback.value = statuses['stopped']}); // Set state optimistically at first
 				workerCards._children[1]._children.forEach(function(buttonComponent, key) {
 					apiInterpreter.appInitCheck(key, buttonComponent);
@@ -101,6 +103,19 @@ module.exports = function(parentView) {
 					UIManager.acquireButtonRefreshStreams(workerName, buttonComponent.streams.statusFeedback);
 				});
 			}
+
+			// This won't have the expected effect if the user keeps its tab open.
+			// But let's implement a clean exit, it may solve some rare unclean exits
+			// window.addEventListener("beforeunload", function (e) {
+			// 	for (let i = 0, max = workerNames.length; i < max; i++) {
+			// 		let workerName = workerNames[i]
+			// 		makeStandardRequest.call(self, workerName, endpointNames[1]);
+			// 	}
+			// 	var confirmationMessage = "\\o/";
+
+			// 	e.returnValue = confirmationMessage; // Gecko, Trident, Chrome 34+
+			// 	return confirmationMessage; // Gecko, WebKit, Chrome <34
+			// });
 			
 			// inner styles
 			const styleElem = document.createElement('style')

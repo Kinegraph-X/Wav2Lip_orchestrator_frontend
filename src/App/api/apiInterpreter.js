@@ -36,7 +36,7 @@ class ApiInterpreter {
 
                     // Propagate state on action buttons
                     const newStatus = this.getStatusFromMessage(content.status);
-                    UIManager.updateButtonState(workerName, newStatus);
+                    UIManager.updateButtonState(from, newStatus);
                     UIManager.filterStatuses(from, newStatus);
                 }
                 else if (messageType === 'end_status') {
@@ -51,6 +51,7 @@ class ApiInterpreter {
                         items.push(dataset.newItem('FINAL STATUS CHECK - ' + message));
                     })
                     dataset.pushApply(items);
+                    UIManager.updateScroll(from);
                     
                     let newStatus;
                     if (isSuccessTrigger) {

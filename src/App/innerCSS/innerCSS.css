@@ -56,6 +56,9 @@ header {
 	background-color : #00904400;
 	filter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(100%) contrast(102%);
 	background-image: url(img/play-circle-outline.svg);
+	justify-content : start; /*hack cause we don't run scoped CSS, so the framework shall display flex at some point*/
+	text-align : left;
+	padding-left : 34px;
   }
   
   .stop_button {

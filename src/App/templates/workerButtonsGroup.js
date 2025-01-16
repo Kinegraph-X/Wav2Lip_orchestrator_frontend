@@ -1,5 +1,6 @@
 const {TemplateFactory} = require('formantjs');
-const {statuses} = require('../constants/constants')
+const {statuses, endpoints} = require('../constants/constants')
+const endpointNames = Object.keys(endpoints);
 const get_button_templates = require('../templates/button_template')
 const get_api_requests = require('../api/api')
 const apiInterpreter = require ('../api/apiInterpreter')
@@ -8,18 +9,17 @@ module.exports = function(workerName, endpointNames) {
 
     const requests = get_api_requests(workerName)
 
-    function makeStandardRequest(endpoint) {
+    function makeStandardRequest(endpointName) {
         const self = this;
-        requests[endpoint]()
+        requests[endpointName]()
             .catch(function(error) {
                 console.error(error)
             })
             .then(function(response) {
                 if (response && response.ok) {
-                    const isSuccess = apiInterpreter.interpretResponse(workerName, response)  // passing a ref to self is a small hack 
-                                                                                            // to be able to refresh statuses when calling /status_worker
+                    const isSuccess = apiInterpreter.interpretResponse(workerName, response)
                     if (isSuccess) {
-                        if (endpoint === 'run') {
+                        if (endpointName === 'run') {
                             apiInterpreter.startupCheck(workerName)
                         }
                     }

@@ -1,43 +1,10 @@
 const {TemplateFactory} = require('formantjs');
 const {statuses} = require('../constants/constants')
 const get_button_template = require('../templates/startAllbutton_template')
-const get_api_requests = require('../api/api')
-const apiInterpreter = require ('../api/apiInterpreter')
+
+const {makeStandardRequest, makeRestartRequest} = require('../api/allButtonsRequests')
 
 module.exports = function(workerNames, endpointNames) {
-
-    const requests = {};
-    workerNames.forEach(function(workerName) {
-        requests[workerName] = get_api_requests(workerName)
-    })
-
-    function makeStandardRequest(workerName, endpoint) {
-        const self = this;
-        requests[workerName][endpoint]()
-            .catch(function(error) {
-                console.error(error)
-            })
-            .then(function(response) {
-                if (response && response.ok) {
-                    const isSuccess = apiInterpreter.interpretResponse(workerName, response)  // passing a ref to self is a small hack 
-                                                                                            // to be able to refresh statuses when calling /status_worker
-                    if (isSuccess) {
-                        if (endpoint === 'run') {
-                            apiInterpreter.startupCheck(workerName)
-                        }
-                    }
-                }
-            })
-    }
-
-    function makeRestartRequest(workerName) {
-        const self = this;
-        makeStandardRequest.call(this, workerName, 'stop')
-
-        setTimeout(function() {
-            makeStandardRequest.call(self, workerName, 'run')
-        }, 3000)
-    }
 
     return TemplateFactory.createDef({
         host : TemplateFactory.createHostDef({
@@ -73,7 +40,7 @@ module.exports = function(workerNames, endpointNames) {
                         const self = this;
                         const endpoint = endpointNames[e.data.key]
                         if (e.data.key === 3) {
-                            for (let i = 0, max = 2; i < max; i++) {
+                            for (let i = 0, max = workerNames.length; i < max; i++) {
                                 let workerName = workerNames[i]
                                 setTimeout(function() {
                                     makeRestartRequest.call(self, workerName);
@@ -81,7 +48,7 @@ module.exports = function(workerNames, endpointNames) {
                             }
                         }
                         else {
-                            for (let i = 0, max = 2; i < max; i++) {
+                            for (let i = 0, max = workerNames.length; i < max; i++) {
                                 let workerName = workerNames[i]
                                 setTimeout(function() {
                                     makeStandardRequest.call(self, workerName, endpoint);

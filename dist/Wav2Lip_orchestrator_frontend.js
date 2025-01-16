@@ -26255,6 +26255,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		if (hasRequiredConstants) return constants_1;
 		hasRequiredConstants = 1;
 		const constants = {
+		    admin : 'admin',
 		    api_url : 'http://127.0.0.1:51312',
 		    endpoints : {
 		        run : '/start_worker',
@@ -26262,11 +26263,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		        status : '/status_worker',
 		        restart : null,
 		    },
-		    workers : {
-		        server : 'server',
-		        playback : 'playback',
-		        client : 'client',
-		    },
+		    workers : {},
 		    statuses : {
 		        running : 'running',
 		        stopped : 'stopped',
@@ -26274,10 +26271,24 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		    },
 		    successTriggers : {
 		        server : ['INFO : Using cpu for inference.', 'INFO : SSH Client closed'],
-		        playback : ['INFO : Server listening on port 9999...', 'INFO : Exit flag reset.'],
+		        playback : ['INFO : Video Playback socket listening on port 9999...', 'INFO : Exit flag reset.'],
 		        client : ['INFO : Connected to video playback socket.', 'INFO : Client subprocess terminated.']
 		    }
 		};
+
+		if (location.pathname.includes(constants.admin)) {
+		    constants.workers = {
+		        server : 'server',
+		        playback : 'playback',
+		        client : 'client',
+		    };
+		}
+		else  {
+		    constants.workers = {
+		        playback : 'playback',
+		        client : 'client',
+		    };
+		}
 
 		constants_1 = constants;
 		return constants_1;
@@ -26481,7 +26492,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 
 		                    // Propagate state on action buttons
 		                    const newStatus = this.getStatusFromMessage(content.status);
-		                    UIManager.updateButtonState(workerName, newStatus);
+		                    UIManager.updateButtonState(from, newStatus);
 		                    UIManager.filterStatuses(from, newStatus);
 		                }
 		                else if (messageType === 'end_status') {
@@ -26496,6 +26507,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		                        items.push(dataset.newItem('FINAL STATUS CHECK - ' + message));
 		                    });
 		                    dataset.pushApply(items);
+		                    UIManager.updateScroll(from);
 		                    
 		                    let newStatus;
 		                    if (isSuccessTrigger) {
@@ -26633,7 +26645,8 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		if (hasRequiredWorkerButtonsGroup) return workerButtonsGroup;
 		hasRequiredWorkerButtonsGroup = 1;
 		const {TemplateFactory} = requireFormant();
-		const {statuses} = requireConstants();
+		const {statuses, endpoints} = requireConstants();
+		const endpointNames = Object.keys(endpoints);
 		const get_button_templates = requireButton_template();
 		const get_api_requests = requireApi();
 		const apiInterpreter = requireApiInterpreter();
@@ -26642,18 +26655,17 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 
 		    const requests = get_api_requests(workerName);
 
-		    function makeStandardRequest(endpoint) {
+		    function makeStandardRequest(endpointName) {
 		        const self = this;
-		        requests[endpoint]()
+		        requests[endpointName]()
 		            .catch(function(error) {
 		                console.error(error);
 		            })
 		            .then(function(response) {
 		                if (response && response.ok) {
-		                    const isSuccess = apiInterpreter.interpretResponse(workerName, response);  // passing a ref to self is a small hack 
-		                                                                                            // to be able to refresh statuses when calling /status_worker
+		                    const isSuccess = apiInterpreter.interpretResponse(workerName, response);
 		                    if (isSuccess) {
-		                        if (endpoint === 'run') {
+		                        if (endpointName === 'run') {
 		                            apiInterpreter.startupCheck(workerName);
 		                        }
 		                    }
@@ -26752,6 +26764,56 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		return startAllbutton_template;
 	}
 
+	var allButtonsRequests;
+	var hasRequiredAllButtonsRequests;
+
+	function requireAllButtonsRequests () {
+		if (hasRequiredAllButtonsRequests) return allButtonsRequests;
+		hasRequiredAllButtonsRequests = 1;
+		const {workers, endpoints} = requireConstants();
+		const workerNames = Object.keys(workers);
+		const get_api_requests = requireApi();
+		const apiInterpreter = requireApiInterpreter();
+
+		const requests = {};
+		workerNames.forEach(function(workerName) {
+		    requests[workerName] = get_api_requests(workerName);
+		});
+
+		function makeStandardRequest(workerName, endpoint) {
+		    const self = this;
+		    requests[workerName][endpoint]()
+		        .catch(function(error) {
+		            console.error(error);
+		        })
+		        .then(function(response) {
+		            if (response && response.ok) {
+		                const isSuccess = apiInterpreter.interpretResponse(workerName, response); 
+		                if (isSuccess) {
+		                    if (endpoint === 'run') {
+		                        apiInterpreter.startupCheck(workerName);
+		                    }
+		                }
+		            }
+		        });
+		}
+
+		function makeRestartRequest(workerName) {
+		    const self = this;
+		    makeStandardRequest.call(this, workerName, 'stop');
+
+		    setTimeout(function() {
+		        makeStandardRequest.call(self, workerName, 'run');
+		    }, 3000);
+		}
+
+		allButtonsRequests = {
+		    makeStandardRequest : makeStandardRequest,
+		    makeRestartRequest : makeRestartRequest
+		};
+		return allButtonsRequests;
+	}
+
 	var startAllButtonsGroup;
 	var hasRequiredStartAllButtonsGroup;
 
@@ -26761,43 +26823,10 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		const {TemplateFactory} = requireFormant();
 		const {statuses} = requireConstants();
 		const get_button_template = requireStartAllbutton_template();
-		const get_api_requests = requireApi();
-		const apiInterpreter = requireApiInterpreter();
+
+		const {makeStandardRequest, makeRestartRequest} = requireAllButtonsRequests();
 
 		startAllButtonsGroup = function(workerNames, endpointNames) {
-
-		    const requests = {};
-		    workerNames.forEach(function(workerName) {
-		        requests[workerName] = get_api_requests(workerName);
-		    });
-
-		    function makeStandardRequest(workerName, endpoint) {
-		        const self = this;
-		        requests[workerName][endpoint]()
-		            .catch(function(error) {
-		                console.error(error);
-		            })
-		            .then(function(response) {
-		                if (response && response.ok) {
-		                    const isSuccess = apiInterpreter.interpretResponse(workerName, response);  // passing a ref to self is a small hack 
-		                                                                                            // to be able to refresh statuses when calling /status_worker
-		                    if (isSuccess) {
-		                        if (endpoint === 'run') {
-		                            apiInterpreter.startupCheck(workerName);
-		                        }
-		                    }
-		                }
-		            });
-		    }
-
-		    function makeRestartRequest(workerName) {
-		        const self = this;
-		        makeStandardRequest.call(this, workerName, 'stop');
-
-		        setTimeout(function() {
-		            makeStandardRequest.call(self, workerName, 'run');
-		        }, 3000);
-		    }
 
 		    return TemplateFactory.createDef({
 		        host : TemplateFactory.createHostDef({
@@ -26833,7 +26862,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		                        const self = this;
 		                        const endpoint = endpointNames[e.data.key];
 		                        if (e.data.key === 3) {
-		                            for (let i = 0, max = 2; i < max; i++) {
+		                            for (let i = 0, max = workerNames.length; i < max; i++) {
 		                                let workerName = workerNames[i];
 		                                setTimeout(function() {
 		                                    makeRestartRequest.call(self, workerName);
@@ -26841,7 +26870,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		                            }
 		                        }
 		                        else {
-		                            for (let i = 0, max = 2; i < max; i++) {
+		                            for (let i = 0, max = workerNames.length; i < max; i++) {
 		                                let workerName = workerNames[i];
 		                                setTimeout(function() {
 		                                    makeStandardRequest.call(self, workerName, endpoint);
@@ -27032,14 +27061,14 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		return actionColumnsTemplate;
 	}
 
-	var innerCSS = "* {\r\n\tbox-sizing : border-box;\r\n}\r\n\r\n:host {\r\n\tdisplay : flex;\r\n\talign-items : center;\r\n\tmax-width : 1801px;\r\n}\r\n:host > section {\r\n\tmin-width : 98%;\r\n\tmin-height : 152px;\r\n}\r\n\r\nh1, h2, h3, h4, h5, h6 {\r\n\tmargin : 0px;\r\n}\r\n\r\nheader {\r\n\theight : 20px;\r\n}\r\n  \r\n  .row {\r\n\tdisplay : flex;\r\n\tjustify-content : space-around;\r\n\tgap : 17px;\r\n  }\r\n\r\n.row.logs section {\r\n\tflex : 1 1 0;\r\n}\r\n  \r\n  .margin_top {\r\n\tmargin-top: 24px;\r\n  }\r\n  \r\n  button {\r\n\tdisplay : block;\r\n\tjustify-content : end; /*hack cause we don't run scoped CSS, so the framework shall display flex at some point*/\r\n\ttext-align : right;\r\n\tbackground-repeat : no-repeat;\r\n\tcolor : #000;\r\n\tfont-size : 15px;\r\n\twidth : 74px;\r\n\tmargin : 4px;\r\n\tpadding : 5px 0px;\r\n\tborder : none;\r\n\tborder-radius : 7px;\r\n\tcursor : pointer;\r\n  }\r\n  \r\n  .run_button {\r\n\tposition : absolute;\r\n\ttop : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #00904400;\r\n\tfilter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(100%) contrast(102%);\r\n\tbackground-image: url(img/play-circle-outline.svg);\r\n  }\r\n  \r\n  .stop_button {\r\n\tposition : absolute;\r\n\ttop : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #BD222200;\r\n\tfilter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(89%) contrast(89%);\r\n\tbackground-image: url(img/stop-circle-outline.svg);\r\n  }\r\n  \r\n  .status_button {\r\n\tposition : absolute;\r\n\tbottom : 7px;\r\n\tright : 7px;\r\n\tbackground-color : #5550;\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(95%) contrast(84%);\r\n\tbackground-image: url(img/cube-outline.svg);\r\n\tbackground-position : right center;\r\n\ttext-align : left;\r\n  }\r\n  \r\n  .restart_button {\r\n\tposition : absolute;\r\n\tbottom : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #22779900;\r\n\tfilter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(91%) contrast(90%);\r\n\tbackground-image: url(img/refresh-outline.svg);\r\n  }\r\n\r\n  .run_button:hover {\r\n\tfilter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(200%) contrast(102%);\r\n  }\r\n  \r\n  .stop_button:hover {\r\n\tfilter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(180%) contrast(89%);\r\n  }\r\n  \r\n  .status_button:hover {\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);\r\n  }\r\n  \r\n  .restart_button:hover {\r\n\tfilter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(180%) contrast(90%);\r\n  }\r\n\r\n  .column_content {\r\n\tmargin-top : 5px;\r\n}\r\n\r\n.column_content.scrollable ul {\r\n\theight : 380px;\r\n\tscrollbar-width: thin;\r\n\toverflow-y : scroll;\r\n}\r\n\r\n.column_content.scrollable ul::-webkit-scrollbar-thumb {\r\n\tborder-radius : 4px;\r\n}\r\n\r\n.column_header {\r\n\tline-height : 18px;\r\n}\r\n\r\n.column_content div {\r\n  position : relative;\r\n  background-color: #22242B;\r\n  min-width : 189px;\r\n  max-width : 634px;\r\n  padding : 7px;\r\n  border : 2px solid #1A1824;\r\n  border-width : 2px 1px 1px 1px;\r\n  border-color : #997755 #1A1824 #1A1824 #443311;\r\n  border-radius : 7px;\r\n}\r\n\r\n .column_content h4 {\r\n\ttext-align : center;\r\n\tmargin : 57px 21px 57px 21px;\r\n  }\r\n\r\n  ul {\r\n\tfont-family : consolas;\r\n\tpadding : 0px;\r\n\tmargin : 5px 0px;\r\n  }\r\n\r\n  li {\r\n\tlist-style-type : none;\r\n\tfont-size: 11px;\r\n  }\r\n\r\n  .success {\r\n\tcolor : #228855;\r\n  }\r\n\r\n  .backspace {\r\n\tdisplay : inline-block;\r\n\tposition : relative;\r\n\ttop : -4px;\r\n\tbackground-color  : #0000;\r\n\tbackground-image: url(img/backspace-outline.svg);\r\n\tbackground-repeat : no-repeat;\r\n\tcolor : #EFEFEF;\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);\r\n\twidth : 19px;\r\n\theight : 19px;\r\n\tmargin : 7px;\r\n\tpadding : 0px 0px;\r\n\tcursor : pointer;\r\n  }";
+	var innerCSS = "* {\r\n\tbox-sizing : border-box;\r\n}\r\n\r\n:host {\r\n\tdisplay : flex;\r\n\talign-items : center;\r\n\tmax-width : 1801px;\r\n}\r\n:host > section {\r\n\tmin-width : 98%;\r\n\tmin-height : 152px;\r\n}\r\n\r\nh1, h2, h3, h4, h5, h6 {\r\n\tmargin : 0px;\r\n}\r\n\r\nheader {\r\n\theight : 20px;\r\n}\r\n  \r\n  .row {\r\n\tdisplay : flex;\r\n\tjustify-content : space-around;\r\n\tgap : 17px;\r\n  }\r\n\r\n.row.logs section {\r\n\tflex : 1 1 0;\r\n}\r\n  \r\n  .margin_top {\r\n\tmargin-top: 24px;\r\n  }\r\n  \r\n  button {\r\n\tdisplay : block;\r\n\tjustify-content : end; /*hack cause we don't run scoped CSS, so the framework shall display flex at some point*/\r\n\ttext-align : right;\r\n\tbackground-repeat : no-repeat;\r\n\tcolor : #000;\r\n\tfont-size : 15px;\r\n\twidth : 74px;\r\n\tmargin : 4px;\r\n\tpadding : 5px 0px;\r\n\tborder : none;\r\n\tborder-radius : 7px;\r\n\tcursor : pointer;\r\n  }\r\n  \r\n  .run_button {\r\n\tposition : absolute;\r\n\ttop : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #00904400;\r\n\tfilter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(100%) contrast(102%);\r\n\tbackground-image: url(img/play-circle-outline.svg);\r\n\tjustify-content : start; /*hack cause we don't run scoped CSS, so the framework shall display flex at some point*/\r\n\ttext-align : left;\r\n\tpadding-left : 34px;\r\n  }\r\n  \r\n  .stop_button {\r\n\tposition : absolute;\r\n\ttop : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #BD222200;\r\n\tfilter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(89%) contrast(89%);\r\n\tbackground-image: url(img/stop-circle-outline.svg);\r\n  }\r\n  \r\n  .status_button {\r\n\tposition : absolute;\r\n\tbottom : 7px;\r\n\tright : 7px;\r\n\tbackground-color : #5550;\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(95%) contrast(84%);\r\n\tbackground-image: url(img/cube-outline.svg);\r\n\tbackground-position : right center;\r\n\ttext-align : left;\r\n  }\r\n  \r\n  .restart_button {\r\n\tposition : absolute;\r\n\tbottom : 7px;\r\n\tleft : 7px;\r\n\tbackground-color : #22779900;\r\n\tfilter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(91%) contrast(90%);\r\n\tbackground-image: url(img/refresh-outline.svg);\r\n  }\r\n\r\n  .run_button:hover {\r\n\tfilter: invert(90%) sepia(5%) saturate(5026%) hue-rotate(175deg) brightness(200%) contrast(102%);\r\n  }\r\n  \r\n  .stop_button:hover {\r\n\tfilter: invert(21%) sepia(99%) saturate(1962%) hue-rotate(348deg) brightness(180%) contrast(89%);\r\n  }\r\n  \r\n  .status_button:hover {\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);\r\n  }\r\n  \r\n  .restart_button:hover {\r\n\tfilter: invert(36%) sepia(94%) saturate(385%) hue-rotate(151deg) brightness(180%) contrast(90%);\r\n  }\r\n\r\n  .column_content {\r\n\tmargin-top : 5px;\r\n}\r\n\r\n.column_content.scrollable ul {\r\n\theight : 380px;\r\n\tscrollbar-width: thin;\r\n\toverflow-y : scroll;\r\n}\r\n\r\n.column_content.scrollable ul::-webkit-scrollbar-thumb {\r\n\tborder-radius : 4px;\r\n}\r\n\r\n.column_header {\r\n\tline-height : 18px;\r\n}\r\n\r\n.column_content div {\r\n  position : relative;\r\n  background-color: #22242B;\r\n  min-width : 189px;\r\n  max-width : 634px;\r\n  padding : 7px;\r\n  border : 2px solid #1A1824;\r\n  border-width : 2px 1px 1px 1px;\r\n  border-color : #997755 #1A1824 #1A1824 #443311;\r\n  border-radius : 7px;\r\n}\r\n\r\n .column_content h4 {\r\n\ttext-align : center;\r\n\tmargin : 57px 21px 57px 21px;\r\n  }\r\n\r\n  ul {\r\n\tfont-family : consolas;\r\n\tpadding : 0px;\r\n\tmargin : 5px 0px;\r\n  }\r\n\r\n  li {\r\n\tlist-style-type : none;\r\n\tfont-size: 11px;\r\n  }\r\n\r\n  .success {\r\n\tcolor : #228855;\r\n  }\r\n\r\n  .backspace {\r\n\tdisplay : inline-block;\r\n\tposition : relative;\r\n\ttop : -4px;\r\n\tbackground-color  : #0000;\r\n\tbackground-image: url(img/backspace-outline.svg);\r\n\tbackground-repeat : no-repeat;\r\n\tcolor : #EFEFEF;\r\n\tfilter: invert(32%) sepia(0%) saturate(0%) hue-rotate(172deg) brightness(190%) contrast(84%);\r\n\twidth : 19px;\r\n\theight : 19px;\r\n\tmargin : 7px;\r\n\tpadding : 0px 0px;\r\n\tcursor : pointer;\r\n  }";
 
 	var innerCSS$1 = /*#__PURE__*/Object.freeze({
 		__proto__: null,
 		default: innerCSS
 	});
 
-	var require$$9 = /*@__PURE__*/getAugmentedNamespace(innerCSS$1);
+	var require$$10 = /*@__PURE__*/getAugmentedNamespace(innerCSS$1);
 
 	var app;
 	var hasRequiredApp;
@@ -27049,15 +27078,17 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 		hasRequiredApp = 1;
 		const {App, TemplateFactory} = requireFormant();
 		const {endpoints, workers, statuses} = requireConstants();
+		const constants = requireConstants();
 		const getWorkerButtonsGroup = requireWorkerButtonsGroup();
-		const getSartAllButton = requireStartAllButtonsGroup();
+		const getStartAllButton = requireStartAllButtonsGroup();
 		const getListsTemplates = requireListTemplate();
 		const get_column_templates = requireStatusColumnsTemplate();
 		const get_column_template = requireActionColumnsTemplate();
+		const {makeStandardRequest} = requireAllButtonsRequests();
 		const apiInterpreter = requireApiInterpreter();
 		const UIManager = requireUIManager();
 
-		const innerStyles = require$$9;
+		const innerStyles = require$$10;
 
 
 		/**
@@ -27086,7 +27117,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 					
 					const endpointNames = Object.keys(endpoints);
 					let buttonSectionMembers;
-					if (location.pathname.includes('admin')) {
+					if (location.pathname.includes(constants.admin)) {
 						buttonSectionMembers = Object.keys(workers).map(function(worker, key) {
 							const workerActionsTemplate = getWorkerButtonsGroup(worker, endpointNames);
 							workerActionsTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : worker}]}));
@@ -27094,7 +27125,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 						});
 					}
 					else {
-						const workerActionTemplate = getSartAllButton(Object.values(workers), endpointNames);
+						const workerActionTemplate = getStartAllButton(Object.values(workers), endpointNames);
 						workerActionTemplate.members.unshift(TemplateFactory.createHostDef({nodeName : 'h4', attributes : [{textContent : 'Run Avatar'}]}));
 						buttonSectionMembers = [
 							workerActionTemplate
@@ -27135,7 +27166,7 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 						UIManager.acquireLogElement(workerNames[key], listComponent.view.getMasterNode());
 					});
 					// Check statuses of all workers at initialization (in case the page has been reloaded on an intermediate state)
-					if (location.pathname.includes('admin')) {
+					if (location.pathname.includes(constants.admin)) {
 						workerCards._children[1]._children.forEach(function(workerCard) { workerCard.streams.statusFeedback.value = statuses['stopped'];}); // Set state optimistically at first
 						workerCards._children[1]._children.forEach(function(buttonComponent, key) {
 							apiInterpreter.appInitCheck(key, buttonComponent);
@@ -27150,6 +27181,19 @@ var Wav2Lip_orchestrator_frontendLauncher = (function () {
 							UIManager.acquireButtonRefreshStreams(workerName, buttonComponent.streams.statusFeedback);
 						});
 					}
+
+					// This won't have the expected effect if the user keeps its tab open.
+					// But let's implement a clean exit, it may solve some rare unclean exits
+					// window.addEventListener("beforeunload", function (e) {
+					// 	for (let i = 0, max = workerNames.length; i < max; i++) {
+					// 		let workerName = workerNames[i]
+					// 		makeStandardRequest.call(self, workerName, endpointNames[1]);
+					// 	}
+					// 	var confirmationMessage = "\\o/";
+
+					// 	e.returnValue = confirmationMessage; // Gecko, Trident, Chrome 34+
+					// 	return confirmationMessage; // Gecko, WebKit, Chrome <34
+					// });
 					
 					// inner styles
 					const styleElem = document.createElement('style');
